@@ -386,21 +386,54 @@
           return () => ro.disconnect();
         }, []);
 
-        // Same-origin hand-off: the preview page reads window.__snPreview when it
-        // boots, and we call its __snApply on every change, so updates are instant.
-        const frameWin = () => {
-          try {
-            return frame.current && frame.current.contentWindow;
-          } catch {
-            return null;
-          }
-        };
+        // Hand-off to the preview page. Served over http(s) both pages share an
+        // origin, so we call the preview's __snApply directly (instant). Opened
+        // from disk (file://) Chrome isolates every file, so direct access throws;
+        // then we fall back to postMessage, which works across that boundary.
+        const latest = useRef({ text, photos });
+        const frameWin = () => (frame.current && frame.current.contentWindow) || null;
+
         const push = () => {
           const w = frameWin();
-          if (w && typeof w.__snApply === "function") w.__snApply(window.__snPreview);
+          if (!w) return;
+          try {
+            if (typeof w.__snApply === "function") {
+              w.__snApply(window.__snPreview);
+              return;
+            }
+          } catch {
+            /* cross-origin (file://): use postMessage below */
+          }
+          try {
+            w.postMessage({ type: "sn-content", ...latest.current }, "*");
+          } catch {}
         };
 
+        const scrollTo = (anchor) => {
+          const w = frameWin();
+          if (!w) return;
+          try {
+            if (typeof w.__snScroll === "function") return w.__snScroll(anchor);
+          } catch {}
+          try {
+            w.postMessage({ type: "sn-scroll", id: anchor }, "*");
+          } catch {}
+        };
+
+        // The preview announces itself once it has rendered; answer with the draft.
         useEffect(() => {
+          const onMessage = (e) => {
+            if (e.source && e.source === frameWin() && e.data && e.data.type === "sn-ready") {
+              setLoaded(true);
+              push();
+            }
+          };
+          window.addEventListener("message", onMessage);
+          return () => window.removeEventListener("message", onMessage);
+        }, []);
+
+        useEffect(() => {
+          latest.current = { text, photos };
           const photoUrls = {};
           Object.keys(photos || {}).forEach((k) => {
             if (photos[k]) photoUrls[k] = blobUrl(photos[k]);
@@ -410,8 +443,7 @@
         }, [text, photos]);
 
         useEffect(() => {
-          const w = frameWin();
-          if (target && w && typeof w.__snScroll === "function") w.__snScroll(target.anchor);
+          if (target) scrollTo(target.anchor);
         }, [target]);
 
         const W = DEVICES[device];
