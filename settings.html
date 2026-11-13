@@ -374,7 +374,7 @@
       const LivePreview = ({ text, photos, target }) => {
         const frame = useRef(null);
         const box = useRef(null);
-        const [ready, setReady] = useState(0);
+        const [loaded, setLoaded] = useState(false);
         const [size, setSize] = useState({ w: 0, h: 0 });
         const [device, setDevice] = useState(() => pref.get("device", "desktop"));
 
@@ -386,34 +386,33 @@
           return () => ro.disconnect();
         }, []);
 
-        useEffect(() => {
-          const onMessage = (e) => {
-            if (
-              e.origin !== location.origin ||
-              !frame.current ||
-              e.source !== frame.current.contentWindow
-            )
-              return;
-            if (e.data && e.data.type === "sn-ready") setReady((n) => n + 1);
-          };
-          window.addEventListener("message", onMessage);
-          return () => window.removeEventListener("message", onMessage);
-        }, []);
-
-        const post = (msg) =>
-          frame.current &&
-          frame.current.contentWindow &&
-          frame.current.contentWindow.postMessage(msg, location.origin);
+        // Same-origin hand-off: the preview page reads window.__snPreview when it
+        // boots, and we call its __snApply on every change, so updates are instant.
+        const frameWin = () => {
+          try {
+            return frame.current && frame.current.contentWindow;
+          } catch {
+            return null;
+          }
+        };
+        const push = () => {
+          const w = frameWin();
+          if (w && typeof w.__snApply === "function") w.__snApply(window.__snPreview);
+        };
 
         useEffect(() => {
-          if (!ready) return;
-          const id = setTimeout(() => post({ type: "sn-content", text, photos }), 120);
-          return () => clearTimeout(id);
-        }, [ready, text, photos]);
+          const photoUrls = {};
+          Object.keys(photos || {}).forEach((k) => {
+            if (photos[k]) photoUrls[k] = blobUrl(photos[k]);
+          });
+          window.__snPreview = { text, photos: photoUrls };
+          push();
+        }, [text, photos]);
 
         useEffect(() => {
-          if (ready && target) post({ type: "sn-scroll", id: target.anchor });
-        }, [ready, target]);
+          const w = frameWin();
+          if (target && w && typeof w.__snScroll === "function") w.__snScroll(target.anchor);
+        }, [target]);
 
         const W = DEVICES[device];
         const scale = size.w ? Math.min(1, size.w / W) : 1;
@@ -453,6 +452,10 @@
                   ref={frame}
                   src="index.html?preview&embed"
                   title="Live preview of the home page"
+                  onLoad={() => {
+                    setLoaded(true);
+                    push();
+                  }}
                   className="absolute top-0 border-0 bg-brand-bg"
                   style={{
                     left,
@@ -463,8 +466,8 @@
                   }}
                 />
               )}
-              {!ready && (
-                <p className="absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-brand-muted">
+              {!loaded && (
+                <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-brand-muted">
                   Loading preview…
                 </p>
               )}
