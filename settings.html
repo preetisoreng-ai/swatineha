@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Site photos — Swati Neha</title>
+    <title>Site settings — Swati Neha</title>
     <meta name="robots" content="noindex" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -44,6 +44,7 @@
     ></script>
     <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
     <script src="photo-store.js"></script>
+    <script src="site-content.js"></script>
 
     <style>
       body {
@@ -63,26 +64,30 @@
 
     <script type="text/babel">
       const { useState, useEffect, useMemo, useRef, useCallback } = React;
+      const { SECTIONS: TEXT_SECTIONS, DEFAULTS } = SiteContent;
 
-      // Sections mirror the order of the home page. Aspect ratios match how each
-      // photo is cropped there, so the preview shows the real framing.
-      const SECTIONS = [
+      // Photo spots, in home-page order. Aspect ratios match the crop used there.
+      // `anchor` is the section id on the home page (used to scroll the live preview).
+      const PHOTO_SECTIONS = [
         {
-          id: "cover",
+          id: "p-cover",
+          anchor: "top",
           name: "Cover",
           where: "The large portrait at the top of the home page, beside the headline.",
           layout: "single",
           slots: [{ key: "hero", label: "Cover portrait", aspect: "4/5" }],
         },
         {
-          id: "about",
+          id: "p-about",
+          anchor: "about",
           name: "The approach",
           where: "Next to “Your face first. The trend second.”",
           layout: "single",
           slots: [{ key: "about", label: "Swati at work", aspect: "3/4" }],
         },
         {
-          id: "services",
+          id: "p-services",
+          anchor: "services",
           name: "Services",
           where: "One photo for each of the three service cards.",
           layout: "row",
@@ -93,27 +98,46 @@
           ],
         },
         {
-          id: "portfolio",
+          id: "p-portfolio",
+          anchor: "portfolio",
           name: "Portfolio",
           where: "The “Selected looks” grid. Two of the six are tall.",
           layout: "gallery",
           slots: [
-            { key: "g1", label: "Classic Bridal", aspect: "3/5", tall: true },
-            { key: "g2", label: "Reception Smoke", aspect: "4/5" },
-            { key: "g3", label: "Natural Glow", aspect: "4/5" },
-            { key: "g4", label: "Soft Glam", aspect: "4/5" },
-            { key: "g5", label: "Editorial Red", aspect: "3/5", tall: true },
-            { key: "g6", label: "Mehendi Dewy", aspect: "4/5" },
+            { key: "g1", aspect: "3/5", tall: true },
+            { key: "g2", aspect: "4/5" },
+            { key: "g3", aspect: "4/5" },
+            { key: "g4", aspect: "4/5" },
+            { key: "g5", aspect: "3/5", tall: true },
+            { key: "g6", aspect: "4/5" },
           ],
         },
         {
-          id: "quote",
+          id: "p-quote",
+          anchor: "quote",
           name: "Quote",
           where: "Beside the quote in the dark band before the reviews.",
           layout: "single",
           slots: [{ key: "quote", label: "A bride, laughing", aspect: "4/5" }],
         },
       ];
+
+      // Per-viewer conveniences only (which tab, preview on/off).
+      const pref = {
+        get(k, fallback) {
+          try {
+            const v = localStorage.getItem(`sn-settings-${k}`);
+            return v === null ? fallback : JSON.parse(v);
+          } catch {
+            return fallback;
+          }
+        },
+        set(k, v) {
+          try {
+            localStorage.setItem(`sn-settings-${k}`, JSON.stringify(v));
+          } catch {}
+        },
+      };
 
       // One object URL per Blob, reused across renders.
       const urlCache = new WeakMap();
@@ -124,15 +148,16 @@
       };
 
       const btn =
-        "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-medium uppercase tracking-[0.18em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-bg disabled:cursor-not-allowed disabled:opacity-40";
+        "inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full px-5 py-2 text-xs font-medium uppercase tracking-[0.18em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-bg disabled:cursor-not-allowed disabled:opacity-40";
       const btnPrimary = `${btn} bg-brand-accent text-white shadow-lg shadow-brand-accent/25 hover:bg-brand-accent/90`;
       const btnGhost = `${btn} border border-brand-primary/20 text-brand-text hover:border-brand-accent hover:text-brand-accent`;
+      const linkBtn = "py-1 text-xs underline-offset-4 hover:underline";
 
-      const Slot = ({ slot, blob, changed, busy, onPick, onRemove, onUndo }) => {
+      // ── Photos ────────────────────────────────────────────
+      const Slot = ({ slot, label, blob, changed, busy, onPick, onRemove, onUndo }) => {
         const input = useRef(null);
         const [over, setOver] = useState(false);
         const url = blobUrl(blob);
-
         const handleFiles = (files) => files && files[0] && onPick(slot.key, files[0]);
 
         return (
@@ -154,7 +179,7 @@
               {url ? (
                 <img
                   src={url}
-                  alt={slot.label}
+                  alt={label}
                   className="absolute inset-0 h-full w-full object-cover"
                 />
               ) : (
@@ -195,7 +220,7 @@
                 accept="image/*"
                 className="sr-only"
                 tabIndex={-1}
-                aria-label={`Upload photo for ${slot.label}`}
+                aria-label={`Upload photo for ${label}`}
                 onChange={(e) => {
                   handleFiles(e.target.files);
                   e.target.value = "";
@@ -203,12 +228,12 @@
               />
             </div>
             <figcaption className="mt-2.5">
-              <p className="font-display text-sm uppercase tracking-[0.16em]">{slot.label}</p>
-              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              <p className="font-display text-sm uppercase tracking-[0.16em]">{label}</p>
+              <div className="mt-1 flex flex-wrap gap-x-4">
                 <button
                   type="button"
                   onClick={() => input.current.click()}
-                  className="py-1 text-brand-accent underline-offset-4 hover:underline"
+                  className={`${linkBtn} text-brand-accent`}
                 >
                   {url ? "Replace" : "Upload"}
                 </button>
@@ -216,7 +241,7 @@
                   <button
                     type="button"
                     onClick={() => onRemove(slot.key)}
-                    className="py-1 text-brand-muted underline-offset-4 hover:text-brand-text hover:underline"
+                    className={`${linkBtn} text-brand-muted hover:text-brand-text`}
                   >
                     Remove
                   </button>
@@ -225,7 +250,7 @@
                   <button
                     type="button"
                     onClick={() => onUndo(slot.key)}
-                    className="py-1 text-brand-muted underline-offset-4 hover:text-brand-text hover:underline"
+                    className={`${linkBtn} text-brand-muted hover:text-brand-text`}
                   >
                     Undo
                   </button>
@@ -236,28 +261,215 @@
         );
       };
 
-      const Section = ({ section, children, changedCount }) => {
-        const grid = {
-          single: "grid max-w-xs grid-cols-1",
-          row: "grid grid-cols-2 gap-5 sm:grid-cols-3",
-          gallery: "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
-        }[section.layout];
+      // ── Text ──────────────────────────────────────────────
+      const TextField = ({ field, value, changed, onChange, onUndo, onFocus }) => {
+        const id = `f-${field.key}`;
+        const isDefault = value === DEFAULTS[field.key];
+        const cls =
+          "mt-1.5 block w-full rounded-lg border bg-white/70 px-3.5 py-2.5 text-[15px] leading-relaxed text-brand-text placeholder-brand-muted/60 transition focus:border-brand-accent focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-accent/25";
+        const border = changed ? "border-brand-accent/60" : "border-brand-primary/15";
+        const rows =
+          field.type === "line"
+            ? 1
+            : Math.min(
+                8,
+                Math.max(
+                  field.type === "list" ? 3 : 2,
+                  Math.ceil(value.length / 70) + value.split("\n").length - 1
+                )
+              );
         return (
-          <section
-            id={section.id}
-            className="scroll-mt-28 border-t border-brand-primary/15 py-12 first:border-t-0 first:pt-2"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="font-display text-3xl md:text-4xl">{section.name}</h2>
-              {changedCount > 0 && (
-                <span className="text-xs uppercase tracking-[0.2em] text-brand-accent">
-                  {changedCount} unsaved
-                </span>
+          <div>
+            <div className="flex items-baseline justify-between gap-3">
+              <label
+                htmlFor={id}
+                className="text-[11px] font-medium uppercase tracking-[0.2em] text-brand-muted"
+              >
+                {field.label}
+              </label>
+              <div className="flex shrink-0 gap-3">
+                {changed && (
+                  <button
+                    type="button"
+                    onClick={() => onUndo(field.key)}
+                    className={`${linkBtn} text-brand-accent`}
+                  >
+                    Undo
+                  </button>
+                )}
+                {!isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => onChange(field.key, DEFAULTS[field.key])}
+                    className={`${linkBtn} text-brand-muted hover:text-brand-text`}
+                    title={`Original: ${DEFAULTS[field.key]}`}
+                  >
+                    Use original
+                  </button>
+                )}
+              </div>
+            </div>
+            {field.type === "line" ? (
+              <input
+                id={id}
+                type="text"
+                value={value}
+                onFocus={onFocus}
+                onChange={(e) => onChange(field.key, e.target.value)}
+                className={`${cls} ${border}`}
+              />
+            ) : (
+              <textarea
+                id={id}
+                rows={rows}
+                value={value}
+                onFocus={onFocus}
+                onChange={(e) => onChange(field.key, e.target.value)}
+                className={`${cls} ${border} resize-y`}
+              />
+            )}
+            {field.rich && (
+              <p className="mt-1.5 text-xs font-light text-brand-muted">
+                Put <span className="font-medium text-brand-text">*asterisks*</span> around words to
+                make them italic and coloured. Press Enter for a new line.
+              </p>
+            )}
+          </div>
+        );
+      };
+
+      // Consecutive fields with the same `group` are boxed together (e.g. “Review 2”).
+      const groupFields = (fields) => {
+        const out = [];
+        fields.forEach((f) => {
+          const last = out[out.length - 1];
+          if (f.group && last && last.group === f.group) last.fields.push(f);
+          else out.push({ group: f.group, fields: [f] });
+        });
+        return out;
+      };
+
+      // ── Shared section frame ──────────────────────────────
+      const Section = ({ id, name, where, changedCount, children }) => (
+        <section
+          id={id}
+          className="scroll-mt-24 border-t border-brand-primary/15 py-10 first:border-t-0 first:pt-2"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="font-display text-3xl">{name}</h2>
+            {changedCount > 0 && (
+              <span className="text-xs uppercase tracking-[0.2em] text-brand-accent">
+                {changedCount} unsaved
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 max-w-xl font-light text-brand-muted">{where}</p>
+          <div className="mt-7">{children}</div>
+        </section>
+      );
+
+      // ── Live preview ──────────────────────────────────────
+      const DEVICES = { desktop: 1280, mobile: 390 };
+
+      const LivePreview = ({ text, photos, target }) => {
+        const frame = useRef(null);
+        const box = useRef(null);
+        const [ready, setReady] = useState(0);
+        const [size, setSize] = useState({ w: 0, h: 0 });
+        const [device, setDevice] = useState(() => pref.get("device", "desktop"));
+
+        useEffect(() => {
+          const ro = new ResizeObserver(([e]) =>
+            setSize({ w: e.contentRect.width, h: e.contentRect.height })
+          );
+          ro.observe(box.current);
+          return () => ro.disconnect();
+        }, []);
+
+        useEffect(() => {
+          const onMessage = (e) => {
+            if (
+              e.origin !== location.origin ||
+              !frame.current ||
+              e.source !== frame.current.contentWindow
+            )
+              return;
+            if (e.data && e.data.type === "sn-ready") setReady((n) => n + 1);
+          };
+          window.addEventListener("message", onMessage);
+          return () => window.removeEventListener("message", onMessage);
+        }, []);
+
+        const post = (msg) =>
+          frame.current &&
+          frame.current.contentWindow &&
+          frame.current.contentWindow.postMessage(msg, location.origin);
+
+        useEffect(() => {
+          if (!ready) return;
+          const id = setTimeout(() => post({ type: "sn-content", text, photos }), 120);
+          return () => clearTimeout(id);
+        }, [ready, text, photos]);
+
+        useEffect(() => {
+          if (ready && target) post({ type: "sn-scroll", id: target.anchor });
+        }, [ready, target]);
+
+        const W = DEVICES[device];
+        const scale = size.w ? Math.min(1, size.w / W) : 1;
+        const left = Math.max(0, (size.w - W * scale) / 2);
+
+        return (
+          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-brand-primary/15 bg-brand-paper/60 shadow-xl shadow-brand-primary/10">
+            <div className="flex items-center justify-between gap-3 border-b border-brand-primary/10 px-4 py-2.5">
+              <p className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-brand-muted">
+                <span className="h-2 w-2 rounded-full bg-brand-accent" aria-hidden="true" />
+                Live preview
+              </p>
+              <div
+                className="flex rounded-full border border-brand-primary/15 p-0.5"
+                role="group"
+                aria-label="Preview size"
+              >
+                {Object.keys(DEVICES).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={device === d}
+                    onClick={() => {
+                      setDevice(d);
+                      pref.set("device", d);
+                    }}
+                    className={`rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.16em] transition ${device === d ? "bg-brand-primary text-brand-bg" : "text-brand-muted hover:text-brand-text"}`}
+                  >
+                    {d === "desktop" ? "Desktop" : "Phone"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div ref={box} className="relative flex-1 overflow-hidden bg-brand-bg">
+              {size.w > 0 && (
+                <iframe
+                  ref={frame}
+                  src="index.html?preview&embed"
+                  title="Live preview of the home page"
+                  className="absolute top-0 border-0 bg-brand-bg"
+                  style={{
+                    left,
+                    width: W,
+                    height: size.h / scale,
+                    transform: `scale(${scale})`,
+                    transformOrigin: "0 0",
+                  }}
+                />
+              )}
+              {!ready && (
+                <p className="absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-brand-muted">
+                  Loading preview…
+                </p>
               )}
             </div>
-            <p className="mt-2 max-w-xl font-light text-brand-muted">{section.where}</p>
-            <div className={`mt-8 ${grid}`}>{children}</div>
-          </section>
+          </div>
         );
       };
 
@@ -265,42 +477,79 @@
         toast ? (
           <div
             role="status"
-            className={`fixed bottom-20 sm:bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl px-5 py-4 text-sm shadow-2xl ${toast.error ? "bg-red-800 text-white" : "bg-brand-primary text-brand-bg"}`}
+            className={`fixed bottom-20 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl px-5 py-4 text-sm shadow-2xl sm:bottom-6 ${toast.error ? "bg-red-800 text-white" : "bg-brand-primary text-brand-bg"}`}
           >
             {toast.text}
           </div>
         ) : null;
 
+      // ── App ───────────────────────────────────────────────
       const App = () => {
-        const [saved, setSaved] = useState({});
-        const [draft, setDraft] = useState({});
+        const [tab, setTabState] = useState(() =>
+          pref.get("tab", "photos") === "text" ? "text" : "photos"
+        );
+        const [showPreview, setShowPreview] = useState(() => pref.get("preview", true));
+        const [savedPhotos, setSavedPhotos] = useState({});
+        const [draftPhotos, setDraftPhotos] = useState({});
+        const [savedText, setSavedText] = useState(DEFAULTS);
+        const [draftText, setDraftText] = useState(DEFAULTS);
         const [loading, setLoading] = useState(true);
         const [busy, setBusy] = useState({});
         const [saving, setSaving] = useState(false);
         const [toast, setToast] = useState(null);
         const [storeError, setStoreError] = useState(false);
+        const [target, setTarget] = useState(null);
+        const lastAnchor = useRef(null);
+        const toastTimer = useRef(null);
+
+        const setTab = (t) => {
+          setTabState(t);
+          pref.set("tab", t);
+          window.scrollTo({ top: 0 });
+        };
+        const togglePreview = () => {
+          setShowPreview((v) => {
+            pref.set("preview", !v);
+            return !v;
+          });
+        };
 
         const flash = useCallback((text, error = false) => {
           setToast({ text, error });
-          clearTimeout(flash.t);
-          flash.t = setTimeout(() => setToast(null), 3800);
+          clearTimeout(toastTimer.current);
+          toastTimer.current = setTimeout(() => setToast(null), 3800);
         }, []);
 
+        const scrollPreview = (anchor) => {
+          if (lastAnchor.current === anchor) return;
+          lastAnchor.current = anchor;
+          setTarget({ anchor });
+        };
+
         useEffect(() => {
-          PhotoStore.get("saved")
-            .then((s) => {
-              setSaved(s);
-              setDraft(s);
+          Promise.all([PhotoStore.get("saved"), PhotoStore.getText("saved")])
+            .then(([photos, text]) => {
+              const full = SiteContent.resolve(text);
+              setSavedPhotos(photos);
+              setDraftPhotos(photos);
+              setSavedText(full);
+              setDraftText(full);
             })
             .catch(() => setStoreError(true))
             .finally(() => setLoading(false));
         }, []);
 
-        const changedKeys = useMemo(
-          () => PhotoStore.SLOTS.filter((k) => (draft[k] || null) !== (saved[k] || null)),
-          [draft, saved]
+        const changedPhotos = useMemo(
+          () =>
+            PhotoStore.SLOTS.filter((k) => (draftPhotos[k] || null) !== (savedPhotos[k] || null)),
+          [draftPhotos, savedPhotos]
         );
-        const dirty = changedKeys.length > 0;
+        const changedText = useMemo(
+          () => Object.keys(DEFAULTS).filter((k) => draftText[k] !== savedText[k]),
+          [draftText, savedText]
+        );
+        const changeCount = changedPhotos.length + changedText.length;
+        const dirty = changeCount > 0;
 
         useEffect(() => {
           const warn = (e) => {
@@ -312,27 +561,35 @@
           return () => window.removeEventListener("beforeunload", warn);
         }, [dirty]);
 
+        // Photos
         const pick = async (key, file) => {
           setBusy((b) => ({ ...b, [key]: true }));
           try {
             const blob = await PhotoStore.prepare(file);
-            setDraft((d) => ({ ...d, [key]: blob }));
+            setDraftPhotos((d) => ({ ...d, [key]: blob }));
           } catch (err) {
             flash(err.message || "That photo couldn’t be added.", true);
           } finally {
             setBusy((b) => ({ ...b, [key]: false }));
           }
         };
-        const removeSlot = (key) => setDraft((d) => ({ ...d, [key]: null }));
-        const undoSlot = (key) => setDraft((d) => ({ ...d, [key]: saved[key] || null }));
+        const removePhoto = (key) => setDraftPhotos((d) => ({ ...d, [key]: null }));
+        const undoPhoto = (key) =>
+          setDraftPhotos((d) => ({ ...d, [key]: savedPhotos[key] || null }));
+
+        // Text
+        const editText = (key, value) => setDraftText((d) => ({ ...d, [key]: value }));
+        const undoText = (key) => setDraftText((d) => ({ ...d, [key]: savedText[key] }));
 
         const save = async () => {
           setSaving(true);
           try {
-            await PhotoStore.put("saved", draft);
-            await PhotoStore.remove("draft");
-            setSaved({ ...draft });
-            flash("Saved. Your photos are now on the home page.");
+            await PhotoStore.put("saved", draftPhotos);
+            await PhotoStore.putText("saved", draftText, DEFAULTS);
+            await Promise.all([PhotoStore.remove("draft"), PhotoStore.removeText("draft")]);
+            setSavedPhotos({ ...draftPhotos });
+            setSavedText({ ...draftText });
+            flash("Saved. Your changes are now on the home page.");
           } catch {
             flash("Couldn’t save. Your browser may be out of storage space.", true);
           } finally {
@@ -342,27 +599,42 @@
 
         const discard = () => {
           if (!dirty) return;
-          setDraft(saved);
+          setDraftPhotos(savedPhotos);
+          setDraftText(savedText);
           flash("Changes discarded.");
         };
 
         const previewPage = async () => {
           // Open the tab synchronously so pop-up blockers allow it, then point it at the preview.
-          const tab = window.open("", "_blank");
+          const win = window.open("", "_blank");
           try {
-            await PhotoStore.put("draft", draft);
-            if (tab) tab.location.href = "index.html?preview";
+            await PhotoStore.put("draft", draftPhotos);
+            await PhotoStore.putText("draft", draftText, DEFAULTS);
+            if (win) win.location.href = "index.html?preview";
             else location.href = "index.html?preview";
           } catch {
-            if (tab) tab.close();
+            if (win) win.close();
             flash("Couldn’t open the preview.", true);
           }
         };
 
+        const sections = tab === "photos" ? PHOTO_SECTIONS : TEXT_SECTIONS;
+        const sectionChanges = (s) =>
+          tab === "photos"
+            ? s.slots.filter((sl) => changedPhotos.includes(sl.key)).length
+            : s.fields.filter((f) => changedText.includes(f.key)).length;
+        const sectionId = (s) => (tab === "photos" ? s.id : `t-${s.id}`);
+
+        const grids = {
+          single: "grid max-w-xs grid-cols-1",
+          row: "grid grid-cols-2 gap-5 sm:grid-cols-3",
+          gallery: "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
+        };
+
         return (
           <div className="min-h-screen font-body text-brand-text">
-            <header className="sticky top-0 z-40 border-b border-brand-primary/10 bg-brand-bg/85 backdrop-blur-md">
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+            <header className="sticky top-0 z-40 border-b border-brand-primary/10 bg-brand-bg/90 backdrop-blur-md">
+              <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
                 <a
                   href="index.html"
                   className="flex min-h-[44px] items-center gap-2 text-sm text-brand-muted transition hover:text-brand-accent"
@@ -371,25 +643,33 @@
                 </a>
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`mr-1 hidden text-xs uppercase tracking-[0.18em] sm:inline ${dirty ? "text-brand-accent" : "text-brand-muted"}`}
+                    className={`mr-1 hidden text-xs uppercase tracking-[0.18em] md:inline ${dirty ? "text-brand-accent" : "text-brand-muted"}`}
                     aria-live="polite"
                   >
                     {dirty
-                      ? `${changedKeys.length} unsaved change${changedKeys.length > 1 ? "s" : ""}`
+                      ? `${changeCount} unsaved change${changeCount > 1 ? "s" : ""}`
                       : "All changes saved"}
                   </span>
+                  <button
+                    type="button"
+                    onClick={togglePreview}
+                    className={`${btnGhost} hidden lg:inline-flex`}
+                    aria-pressed={showPreview}
+                  >
+                    {showPreview ? "Hide live preview" : "Show live preview"}
+                  </button>
                   <button
                     type="button"
                     onClick={previewPage}
                     className={btnGhost}
                     disabled={loading || storeError}
                   >
-                    Preview page
+                    Full-page preview
                   </button>
                   <button
                     type="button"
                     onClick={discard}
-                    className={btnGhost}
+                    className={`${btnGhost} hidden sm:inline-flex`}
                     disabled={!dirty || saving}
                   >
                     Discard
@@ -406,26 +686,62 @@
               </div>
             </header>
 
-            <main className="mx-auto grid max-w-6xl gap-10 px-4 pb-32 pt-10 sm:px-6 lg:grid-cols-[200px_1fr] lg:px-8">
-              <aside className="lg:sticky lg:top-24 lg:self-start">
+            <div
+              className={`mx-auto px-4 sm:px-6 lg:px-8 ${showPreview ? "max-w-[1600px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-10" : "max-w-5xl"}`}
+            >
+              <main className="pb-32 pt-10">
                 <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-brand-accent">
                   Settings
                 </p>
-                <h1 className="mt-3 font-display text-4xl leading-tight">Site photos</h1>
-                <p className="mt-3 text-sm font-light leading-relaxed text-brand-muted">
-                  Pick a photo for each spot. Nothing changes on the site until you press Save.
+                <h1 className="mt-3 font-display text-4xl leading-tight md:text-5xl">
+                  Edit your home page
+                </h1>
+                <p className="mt-3 max-w-xl font-light leading-relaxed text-brand-muted">
+                  Change photos and words section by section. Check the preview, and press Save when
+                  you’re happy. Nothing changes on the site before that.
                 </p>
-                <nav
-                  aria-label="Sections"
-                  className="mt-6 flex flex-wrap gap-2 lg:flex-col lg:gap-0"
+
+                <div
+                  className="mt-8 inline-flex rounded-full border border-brand-primary/15 bg-brand-paper/50 p-1"
+                  role="tablist"
+                  aria-label="What to edit"
                 >
-                  {SECTIONS.map((s) => {
-                    const n = s.slots.filter((sl) => changedKeys.includes(sl.key)).length;
+                  {[
+                    ["photos", "Photos", changedPhotos.length],
+                    ["text", "Text", changedText.length],
+                  ].map(([key, label, n]) => (
+                    <button
+                      key={key}
+                      role="tab"
+                      type="button"
+                      aria-selected={tab === key}
+                      onClick={() => setTab(key)}
+                      className={`flex min-h-[40px] items-center gap-2 rounded-full px-6 text-sm transition ${tab === key ? "bg-brand-primary text-brand-bg shadow" : "text-brand-muted hover:text-brand-text"}`}
+                    >
+                      {label}
+                      {n > 0 && (
+                        <span
+                          className={`rounded-full px-1.5 text-[10px] font-medium ${tab === key ? "bg-brand-accent text-white" : "bg-brand-accent/15 text-brand-accent"}`}
+                        >
+                          {n}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <nav aria-label="Sections" className="mt-6 flex flex-wrap gap-2">
+                  {sections.map((s) => {
+                    const n = sectionChanges(s);
                     return (
                       <a
                         key={s.id}
-                        href={`#${s.id}`}
-                        className="flex min-h-[40px] items-center justify-between gap-3 rounded-full border border-brand-primary/15 px-4 text-sm transition hover:border-brand-accent hover:text-brand-accent lg:rounded-none lg:border-0 lg:border-b lg:px-0"
+                        href={`#${sectionId(s)}`}
+                        onClick={() => {
+                          lastAnchor.current = null;
+                          scrollPreview(s.anchor);
+                        }}
+                        className="flex min-h-[36px] items-center gap-2 rounded-full border border-brand-primary/15 px-4 text-sm transition hover:border-brand-accent hover:text-brand-accent"
                       >
                         {s.name}
                         {n > 0 && (
@@ -438,54 +754,114 @@
                     );
                   })}
                 </nav>
-              </aside>
 
-              <div>
-                {storeError && (
-                  <p className="mb-8 border border-red-800/30 bg-red-50 p-4 text-sm text-red-900">
-                    This browser is blocking site storage (private browsing can do this), so photos
-                    can’t be saved here.
+                <div className="mt-6">
+                  {storeError && (
+                    <p className="mb-8 border border-red-800/30 bg-red-50 p-4 text-sm text-red-900">
+                      This browser is blocking site storage (private browsing can do this), so
+                      changes can’t be saved here.
+                    </p>
+                  )}
+                  {loading ? (
+                    <p className="py-20 text-center text-brand-muted">Loading…</p>
+                  ) : tab === "photos" ? (
+                    PHOTO_SECTIONS.map((section) => (
+                      <Section
+                        key={section.id}
+                        id={section.id}
+                        name={section.name}
+                        where={section.where}
+                        changedCount={sectionChanges(section)}
+                      >
+                        <div
+                          className={grids[section.layout]}
+                          onMouseEnter={() => scrollPreview(section.anchor)}
+                        >
+                          {section.slots.map((slot) => (
+                            <Slot
+                              key={slot.key}
+                              slot={slot}
+                              label={slot.label || draftText[`${slot.key}.label`]}
+                              blob={draftPhotos[slot.key]}
+                              changed={changedPhotos.includes(slot.key)}
+                              busy={busy[slot.key]}
+                              onPick={(k, f) => {
+                                scrollPreview(section.anchor);
+                                pick(k, f);
+                              }}
+                              onRemove={removePhoto}
+                              onUndo={undoPhoto}
+                            />
+                          ))}
+                        </div>
+                      </Section>
+                    ))
+                  ) : (
+                    TEXT_SECTIONS.map((section) => (
+                      <Section
+                        key={section.id}
+                        id={`t-${section.id}`}
+                        name={section.name}
+                        where={section.where}
+                        changedCount={sectionChanges(section)}
+                      >
+                        <div className="space-y-6">
+                          {groupFields(section.fields).map((g, i) => {
+                            const inner = g.fields.map((f) => (
+                              <TextField
+                                key={f.key}
+                                field={f}
+                                value={draftText[f.key]}
+                                changed={changedText.includes(f.key)}
+                                onChange={editText}
+                                onUndo={undoText}
+                                onFocus={() => scrollPreview(section.anchor)}
+                              />
+                            ));
+                            return g.group ? (
+                              <fieldset
+                                key={i}
+                                className="space-y-5 rounded-xl border border-brand-primary/10 bg-brand-paper/40 p-4 sm:p-5"
+                              >
+                                <legend className="px-1 font-display text-lg">{g.group}</legend>
+                                {inner}
+                              </fieldset>
+                            ) : (
+                              <React.Fragment key={i}>{inner}</React.Fragment>
+                            );
+                          })}
+                        </div>
+                      </Section>
+                    ))
+                  )}
+                  <p className="mt-6 text-xs font-light text-brand-muted">
+                    Changes are stored in this browser on this device. Empty photo spots show the
+                    soft placeholder artwork.
                   </p>
-                )}
-                {loading ? (
-                  <p className="py-20 text-center text-brand-muted">Loading your photos…</p>
-                ) : (
-                  SECTIONS.map((section) => (
-                    <Section
-                      key={section.id}
-                      section={section}
-                      changedCount={
-                        section.slots.filter((sl) => changedKeys.includes(sl.key)).length
-                      }
-                    >
-                      {section.slots.map((slot) => (
-                        <Slot
-                          key={slot.key}
-                          slot={slot}
-                          blob={draft[slot.key]}
-                          changed={changedKeys.includes(slot.key)}
-                          busy={busy[slot.key]}
-                          onPick={pick}
-                          onRemove={removeSlot}
-                          onUndo={undoSlot}
-                        />
-                      ))}
-                    </Section>
-                  ))
-                )}
-                <p className="mt-6 text-xs font-light text-brand-muted">
-                  Photos are stored in this browser on this device. Empty spots show the soft
-                  placeholder artwork.
-                </p>
-              </div>
-            </main>
+                </div>
+              </main>
+
+              {showPreview && (
+                <aside className="hidden lg:block" aria-label="Live preview">
+                  <div className="sticky top-[84px] h-[calc(100vh-104px)] py-2">
+                    {!loading && (
+                      <LivePreview text={draftText} photos={draftPhotos} target={target} />
+                    )}
+                  </div>
+                </aside>
+              )}
+            </div>
 
             {dirty && (
               <div className="fixed inset-x-0 bottom-0 z-40 border-t border-brand-primary/10 bg-brand-bg/95 px-4 py-3 backdrop-blur sm:hidden">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs uppercase tracking-[0.16em] text-brand-accent">
-                    {changedKeys.length} unsaved
-                  </span>
+                  <button
+                    type="button"
+                    onClick={discard}
+                    className="text-xs uppercase tracking-[0.16em] text-brand-muted underline-offset-4 hover:underline"
+                  >
+                    Discard {changeCount}
+                  </button>
                   <button type="button" onClick={save} className={btnPrimary} disabled={saving}>
                     {saving ? "Saving…" : "Save changes"}
                   </button>

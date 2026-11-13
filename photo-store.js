@@ -57,6 +57,18 @@
   };
   const remove = (record) => tx("readwrite", (s) => s.delete(record));
 
+  // Page text lives beside the photos as "text-saved" / "text-draft".
+  // Only fields that differ from the built-in defaults are stored.
+  const getText = async (record) => (await tx("readonly", (s) => s.get(`text-${record}`))) || {};
+  const putText = (record, text, defaults = {}) => {
+    const clean = {};
+    Object.keys(text || {}).forEach((k) => {
+      if (typeof text[k] === "string" && text[k] !== defaults[k]) clean[k] = text[k];
+    });
+    return tx("readwrite", (s) => s.put(clean, `text-${record}`));
+  };
+  const removeText = (record) => tx("readwrite", (s) => s.delete(`text-${record}`));
+
   // Returns { slot: objectURL } ready to drop into <img src>.
   const urls = async (record) => {
     const photos = await get(record);
@@ -93,5 +105,5 @@
     }
   };
 
-  window.PhotoStore = { SLOTS, get, put, remove, urls, prepare };
+  window.PhotoStore = { SLOTS, get, put, remove, urls, prepare, getText, putText, removeText };
 })();
