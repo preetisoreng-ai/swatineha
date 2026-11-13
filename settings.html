@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Site photos — Swati Neha</title>
+    <meta name="robots" content="noindex" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Jost:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                primary: "#2E2A28",
+                accent: "#8E5E48",
+                bg: "#F3E9E2",
+                text: "#231F1D",
+                muted: "#6E625C",
+                paper: "#EBDDD4",
+              },
+            },
+            fontFamily: {
+              display: ["Bodoni Moda", "serif"],
+              body: ["Jost", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+    <script src="photo-store.js"></script>
+
+    <style>
+      body {
+        -webkit-font-smoothing: antialiased;
+      }
+      .placeholder {
+        background-image: repeating-linear-gradient(
+          135deg,
+          rgba(46, 42, 40, 0.05) 0 1px,
+          transparent 1px 12px
+        );
+      }
+    </style>
+  </head>
+  <body class="bg-brand-bg">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+      // Sections mirror the order of the home page. Aspect ratios match how each
+      // photo is cropped there, so the preview shows the real framing.
+      const SECTIONS = [
+        {
+          id: "cover",
+          name: "Cover",
+          where: "The large portrait at the top of the home page, beside the headline.",
+          layout: "single",
+          slots: [{ key: "hero", label: "Cover portrait", aspect: "4/5" }],
+        },
+        {
+          id: "about",
+          name: "The approach",
+          where: "Next to “Your face first. The trend second.”",
+          layout: "single",
+          slots: [{ key: "about", label: "Swati at work", aspect: "3/4" }],
+        },
+        {
+          id: "services",
+          name: "Services",
+          where: "One photo for each of the three service cards.",
+          layout: "row",
+          slots: [
+            { key: "bridal", label: "Bridal makeup", aspect: "4/5" },
+            { key: "editorial", label: "Fashion editorials", aspect: "4/5" },
+            { key: "event", label: "Event makeup", aspect: "4/5" },
+          ],
+        },
+        {
+          id: "portfolio",
+          name: "Portfolio",
+          where: "The “Selected looks” grid. Two of the six are tall.",
+          layout: "gallery",
+          slots: [
+            { key: "g1", label: "Classic Bridal", aspect: "3/5", tall: true },
+            { key: "g2", label: "Reception Smoke", aspect: "4/5" },
+            { key: "g3", label: "Natural Glow", aspect: "4/5" },
+            { key: "g4", label: "Soft Glam", aspect: "4/5" },
+            { key: "g5", label: "Editorial Red", aspect: "3/5", tall: true },
+            { key: "g6", label: "Mehendi Dewy", aspect: "4/5" },
+          ],
+        },
+        {
+          id: "quote",
+          name: "Quote",
+          where: "Beside the quote in the dark band before the reviews.",
+          layout: "single",
+          slots: [{ key: "quote", label: "A bride, laughing", aspect: "4/5" }],
+        },
+      ];
+
+      // One object URL per Blob, reused across renders.
+      const urlCache = new WeakMap();
+      const blobUrl = (b) => {
+        if (!b) return "";
+        if (!urlCache.has(b)) urlCache.set(b, URL.createObjectURL(b));
+        return urlCache.get(b);
+      };
+
+      const btn =
+        "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-medium uppercase tracking-[0.18em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-bg disabled:cursor-not-allowed disabled:opacity-40";
+      const btnPrimary = `${btn} bg-brand-accent text-white shadow-lg shadow-brand-accent/25 hover:bg-brand-accent/90`;
+      const btnGhost = `${btn} border border-brand-primary/20 text-brand-text hover:border-brand-accent hover:text-brand-accent`;
+
+      const Slot = ({ slot, blob, changed, busy, onPick, onRemove, onUndo }) => {
+        const input = useRef(null);
+        const [over, setOver] = useState(false);
+        const url = blobUrl(blob);
+
+        const handleFiles = (files) => files && files[0] && onPick(slot.key, files[0]);
+
+        return (
+          <figure className={slot.tall ? "row-span-2" : ""}>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOver(true);
+              }}
+              onDragLeave={() => setOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setOver(false);
+                handleFiles(e.dataTransfer.files);
+              }}
+              className={`group relative w-full overflow-hidden border transition ${over ? "border-brand-accent ring-2 ring-brand-accent/40" : "border-brand-primary/15"} ${url ? "bg-brand-primary" : "placeholder bg-brand-paper/60"}`}
+              style={{ aspectRatio: slot.aspect }}
+            >
+              {url ? (
+                <img
+                  src={url}
+                  alt={slot.label}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => input.current.click()}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-brand-muted transition hover:text-brand-accent"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-7 w-7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    aria-hidden="true"
+                  >
+                    <rect x="3" y="4" width="18" height="16" rx="1.5" />
+                    <circle cx="9" cy="10" r="1.8" />
+                    <path d="m21 16-5-5-9 9" />
+                  </svg>
+                  <span className="text-[11px] uppercase tracking-[0.2em]">Add photo</span>
+                  <span className="hidden text-xs font-light sm:block">or drop it here</span>
+                </button>
+              )}
+              {busy && (
+                <div className="absolute inset-0 flex items-center justify-center bg-brand-bg/70 text-xs uppercase tracking-[0.2em] text-brand-muted">
+                  Preparing…
+                </div>
+              )}
+              {changed && (
+                <span className="absolute left-2 top-2 rounded-full bg-brand-accent px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-white shadow">
+                  Unsaved
+                </span>
+              )}
+              <input
+                ref={input}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                tabIndex={-1}
+                aria-label={`Upload photo for ${slot.label}`}
+                onChange={(e) => {
+                  handleFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+            <figcaption className="mt-2.5">
+              <p className="font-display text-sm uppercase tracking-[0.16em]">{slot.label}</p>
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => input.current.click()}
+                  className="py-1 text-brand-accent underline-offset-4 hover:underline"
+                >
+                  {url ? "Replace" : "Upload"}
+                </button>
+                {url && (
+                  <button
+                    type="button"
+                    onClick={() => onRemove(slot.key)}
+                    className="py-1 text-brand-muted underline-offset-4 hover:text-brand-text hover:underline"
+                  >
+                    Remove
+                  </button>
+                )}
+                {changed && (
+                  <button
+                    type="button"
+                    onClick={() => onUndo(slot.key)}
+                    className="py-1 text-brand-muted underline-offset-4 hover:text-brand-text hover:underline"
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
+            </figcaption>
+          </figure>
+        );
+      };
+
+      const Section = ({ section, children, changedCount }) => {
+        const grid = {
+          single: "grid max-w-xs grid-cols-1",
+          row: "grid grid-cols-2 gap-5 sm:grid-cols-3",
+          gallery: "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
+        }[section.layout];
+        return (
+          <section
+            id={section.id}
+            className="scroll-mt-28 border-t border-brand-primary/15 py-12 first:border-t-0 first:pt-2"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <h2 className="font-display text-3xl md:text-4xl">{section.name}</h2>
+              {changedCount > 0 && (
+                <span className="text-xs uppercase tracking-[0.2em] text-brand-accent">
+                  {changedCount} unsaved
+                </span>
+              )}
+            </div>
+            <p className="mt-2 max-w-xl font-light text-brand-muted">{section.where}</p>
+            <div className={`mt-8 ${grid}`}>{children}</div>
+          </section>
+        );
+      };
+
+      const Toast = ({ toast }) =>
+        toast ? (
+          <div
+            role="status"
+            className={`fixed bottom-20 sm:bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl px-5 py-4 text-sm shadow-2xl ${toast.error ? "bg-red-800 text-white" : "bg-brand-primary text-brand-bg"}`}
+          >
+            {toast.text}
+          </div>
+        ) : null;
+
+      const App = () => {
+        const [saved, setSaved] = useState({});
+        const [draft, setDraft] = useState({});
+        const [loading, setLoading] = useState(true);
+        const [busy, setBusy] = useState({});
+        const [saving, setSaving] = useState(false);
+        const [toast, setToast] = useState(null);
+        const [storeError, setStoreError] = useState(false);
+
+        const flash = useCallback((text, error = false) => {
+          setToast({ text, error });
+          clearTimeout(flash.t);
+          flash.t = setTimeout(() => setToast(null), 3800);
+        }, []);
+
+        useEffect(() => {
+          PhotoStore.get("saved")
+            .then((s) => {
+              setSaved(s);
+              setDraft(s);
+            })
+            .catch(() => setStoreError(true))
+            .finally(() => setLoading(false));
+        }, []);
+
+        const changedKeys = useMemo(
+          () => PhotoStore.SLOTS.filter((k) => (draft[k] || null) !== (saved[k] || null)),
+          [draft, saved]
+        );
+        const dirty = changedKeys.length > 0;
+
+        useEffect(() => {
+          const warn = (e) => {
+            if (!dirty) return;
+            e.preventDefault();
+            e.returnValue = "";
+          };
+          window.addEventListener("beforeunload", warn);
+          return () => window.removeEventListener("beforeunload", warn);
+        }, [dirty]);
+
+        const pick = async (key, file) => {
+          setBusy((b) => ({ ...b, [key]: true }));
+          try {
+            const blob = await PhotoStore.prepare(file);
+            setDraft((d) => ({ ...d, [key]: blob }));
+          } catch (err) {
+            flash(err.message || "That photo couldn’t be added.", true);
+          } finally {
+            setBusy((b) => ({ ...b, [key]: false }));
+          }
+        };
+        const removeSlot = (key) => setDraft((d) => ({ ...d, [key]: null }));
+        const undoSlot = (key) => setDraft((d) => ({ ...d, [key]: saved[key] || null }));
+
+        const save = async () => {
+          setSaving(true);
+          try {
+            await PhotoStore.put("saved", draft);
+            await PhotoStore.remove("draft");
+            setSaved({ ...draft });
+            flash("Saved. Your photos are now on the home page.");
+          } catch {
+            flash("Couldn’t save. Your browser may be out of storage space.", true);
+          } finally {
+            setSaving(false);
+          }
+        };
+
+        const discard = () => {
+          if (!dirty) return;
+          setDraft(saved);
+          flash("Changes discarded.");
+        };
+
+        const previewPage = async () => {
+          // Open the tab synchronously so pop-up blockers allow it, then point it at the preview.
+          const tab = window.open("", "_blank");
+          try {
+            await PhotoStore.put("draft", draft);
+            if (tab) tab.location.href = "index.html?preview";
+            else location.href = "index.html?preview";
+          } catch {
+            if (tab) tab.close();
+            flash("Couldn’t open the preview.", true);
+          }
+        };
+
+        return (
+          <div className="min-h-screen font-body text-brand-text">
+            <header className="sticky top-0 z-40 border-b border-brand-primary/10 bg-brand-bg/85 backdrop-blur-md">
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+                <a
+                  href="index.html"
+                  className="flex min-h-[44px] items-center gap-2 text-sm text-brand-muted transition hover:text-brand-accent"
+                >
+                  <span aria-hidden="true">←</span> Back to site
+                </a>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`mr-1 hidden text-xs uppercase tracking-[0.18em] sm:inline ${dirty ? "text-brand-accent" : "text-brand-muted"}`}
+                    aria-live="polite"
+                  >
+                    {dirty
+                      ? `${changedKeys.length} unsaved change${changedKeys.length > 1 ? "s" : ""}`
+                      : "All changes saved"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={previewPage}
+                    className={btnGhost}
+                    disabled={loading || storeError}
+                  >
+                    Preview page
+                  </button>
+                  <button
+                    type="button"
+                    onClick={discard}
+                    className={btnGhost}
+                    disabled={!dirty || saving}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={save}
+                    className={btnPrimary}
+                    disabled={!dirty || saving || storeError}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main className="mx-auto grid max-w-6xl gap-10 px-4 pb-32 pt-10 sm:px-6 lg:grid-cols-[200px_1fr] lg:px-8">
+              <aside className="lg:sticky lg:top-24 lg:self-start">
+                <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-brand-accent">
+                  Settings
+                </p>
+                <h1 className="mt-3 font-display text-4xl leading-tight">Site photos</h1>
+                <p className="mt-3 text-sm font-light leading-relaxed text-brand-muted">
+                  Pick a photo for each spot. Nothing changes on the site until you press Save.
+                </p>
+                <nav
+                  aria-label="Sections"
+                  className="mt-6 flex flex-wrap gap-2 lg:flex-col lg:gap-0"
+                >
+                  {SECTIONS.map((s) => {
+                    const n = s.slots.filter((sl) => changedKeys.includes(sl.key)).length;
+                    return (
+                      <a
+                        key={s.id}
+                        href={`#${s.id}`}
+                        className="flex min-h-[40px] items-center justify-between gap-3 rounded-full border border-brand-primary/15 px-4 text-sm transition hover:border-brand-accent hover:text-brand-accent lg:rounded-none lg:border-0 lg:border-b lg:px-0"
+                      >
+                        {s.name}
+                        {n > 0 && (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full bg-brand-accent"
+                            aria-label={`${n} unsaved`}
+                          />
+                        )}
+                      </a>
+                    );
+                  })}
+                </nav>
+              </aside>
+
+              <div>
+                {storeError && (
+                  <p className="mb-8 border border-red-800/30 bg-red-50 p-4 text-sm text-red-900">
+                    This browser is blocking site storage (private browsing can do this), so photos
+                    can’t be saved here.
+                  </p>
+                )}
+                {loading ? (
+                  <p className="py-20 text-center text-brand-muted">Loading your photos…</p>
+                ) : (
+                  SECTIONS.map((section) => (
+                    <Section
+                      key={section.id}
+                      section={section}
+                      changedCount={
+                        section.slots.filter((sl) => changedKeys.includes(sl.key)).length
+                      }
+                    >
+                      {section.slots.map((slot) => (
+                        <Slot
+                          key={slot.key}
+                          slot={slot}
+                          blob={draft[slot.key]}
+                          changed={changedKeys.includes(slot.key)}
+                          busy={busy[slot.key]}
+                          onPick={pick}
+                          onRemove={removeSlot}
+                          onUndo={undoSlot}
+                        />
+                      ))}
+                    </Section>
+                  ))
+                )}
+                <p className="mt-6 text-xs font-light text-brand-muted">
+                  Photos are stored in this browser on this device. Empty spots show the soft
+                  placeholder artwork.
+                </p>
+              </div>
+            </main>
+
+            {dirty && (
+              <div className="fixed inset-x-0 bottom-0 z-40 border-t border-brand-primary/10 bg-brand-bg/95 px-4 py-3 backdrop-blur sm:hidden">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs uppercase tracking-[0.16em] text-brand-accent">
+                    {changedKeys.length} unsaved
+                  </span>
+                  <button type="button" onClick={save} className={btnPrimary} disabled={saving}>
+                    {saving ? "Saving…" : "Save changes"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <Toast toast={toast} />
+          </div>
+        );
+      };
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
